@@ -3,3 +3,10 @@ mods
 manifest.json
 tmpclaude-*
 .env
+jq.exe
+mods_list.md
+.mods_cache.json
+.api_key
+HytaleModLister/.vs
+HytaleModLister/bin
+HytaleModLister/obj
