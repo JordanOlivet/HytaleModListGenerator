@@ -25,3 +25,5 @@ backend/HytaleModLister.Api/appsettings.Development.json
 frontend/node_modules
 frontend/.svelte-kit
 frontend/build
+backend/.vs/HytaleModLister.Api/FileContentIndex
+backend/.vs

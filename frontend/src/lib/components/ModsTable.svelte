@@ -21,13 +21,21 @@
 		return { url: '', label: '-', type: 'none' };
 	}
 
-	function getBadgeLabel(mod: Mod): string {
-		if (!mod.curseForgeUrl && mod.website) return 'website';
-		if (mod.foundVia === 'manifest') return 'manifest';
-		if (mod.foundVia === 'cache') return 'cache';
-		if (mod.foundVia?.startsWith('fuzzy')) return mod.foundVia;
-		if (mod.foundVia) return 'API';
-		return '';
+	type BadgeType = 'manifest' | 'cache' | 'cf-name' | 'cf-id' | 'cf-partial' | 'cf-fuzzy' | 'website' | 'unknown';
+
+	function getBadgeLabel(mod: Mod): { label: string; type: BadgeType } {
+		if (!mod.curseForgeUrl && mod.website) return { label: 'website', type: 'website' };
+		if (mod.foundVia === 'manifest') return { label: 'manifest', type: 'manifest' };
+		if (mod.foundVia === 'cache') return { label: 'cache', type: 'cache' };
+		if (mod.foundVia === 'exact') return { label: 'CurseForge: name', type: 'cf-name' };
+		if (mod.foundVia === 'slug') return { label: 'CurseForge: id', type: 'cf-id' };
+		if (mod.foundVia === 'substring') return { label: 'CurseForge: partial', type: 'cf-partial' };
+		if (mod.foundVia?.startsWith('fuzzy')) {
+			const percent = mod.foundVia.replace('fuzzy:', '');
+			return { label: `CurseForge: ~${percent}`, type: 'cf-fuzzy' };
+		}
+		if (!mod.curseForgeUrl && !mod.website) return { label: 'unknown', type: 'unknown' };
+		return { label: '', type: 'cf-name' };
 	}
 
 	function truncate(text: string | undefined, maxLength: number): string {
@@ -114,8 +122,8 @@
 						<td class="secondary">{mod.authors.join(', ') || 'Unknown'}</td>
 						<td class="secondary description">{truncate(mod.description, 100)}</td>
 						<td>
-							{#if badge}
-								<span class="badge" class:website={urlInfo.type === 'website'}>{badge}</span>
+							{#if badge.label}
+								<span class="badge badge-{badge.type}">{badge.label}</span>
 							{/if}
 						</td>
 					</tr>
@@ -233,13 +241,45 @@
 		font-size: 11px;
 		font-weight: 500;
 		border-radius: 4px;
-		background: var(--accent-color);
 		color: white;
 		text-transform: uppercase;
 	}
 
-	.badge.website {
-		background: var(--text-secondary);
+	/* Manifest: green - reliable source from the mod itself */
+	.badge-manifest {
+		background: #16a34a;
+	}
+
+	/* Cache: purple - cached data */
+	.badge-cache {
+		background: #7c3aed;
+	}
+
+	/* CurseForge sources: blue gradient from dark (most reliable) to light (least reliable) */
+	.badge-cf-name {
+		background: #1e40af;
+	}
+
+	.badge-cf-id {
+		background: #2563eb;
+	}
+
+	.badge-cf-partial {
+		background: #3b82f6;
+	}
+
+	.badge-cf-fuzzy {
+		background: #60a5fa;
+	}
+
+	/* Website: gray - fallback */
+	.badge-website {
+		background: #6b7280;
+	}
+
+	/* Unknown: red - not found */
+	.badge-unknown {
+		background: #dc2626;
 	}
 
 	.loading, .error, .empty {
