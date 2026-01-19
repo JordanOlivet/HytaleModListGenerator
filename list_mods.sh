@@ -285,6 +285,81 @@ normalize_for_match() {
     echo "$text" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g'
 }
 
+# Calcule la distance de Levenshtein entre deux chaînes (via awk pour la performance)
+levenshtein_distance() {
+    local str1="$1"
+    local str2="$2"
+
+    awk -v s1="$str1" -v s2="$str2" 'BEGIN {
+        len1 = length(s1)
+        len2 = length(s2)
+
+        # Cas triviaux
+        if (len1 == 0) { print len2; exit }
+        if (len2 == 0) { print len1; exit }
+
+        # Utiliser un tableau linéaire (plus portable)
+        # Index: i * (len2+1) + j
+        cols = len2 + 1
+
+        # Initialiser la première ligne
+        for (j = 0; j <= len2; j++) d[j] = j
+
+        # Initialiser la première colonne
+        for (i = 0; i <= len1; i++) d[i * cols] = i
+
+        # Remplir la matrice
+        for (i = 1; i <= len1; i++) {
+            c1 = substr(s1, i, 1)
+            for (j = 1; j <= len2; j++) {
+                c2 = substr(s2, j, 1)
+                if (c1 == c2) {
+                    cost = 0
+                } else {
+                    cost = 1
+                }
+
+                # Minimum de deletion, insertion, substitution
+                del = d[(i-1) * cols + j] + 1
+                ins = d[i * cols + (j-1)] + 1
+                subst = d[(i-1) * cols + (j-1)] + cost
+
+                min = del
+                if (ins < min) min = ins
+                if (subst < min) min = subst
+
+                d[i * cols + j] = min
+            }
+        }
+
+        print d[len1 * cols + len2]
+    }'
+}
+
+# Calcule le pourcentage de similarité basé sur Levenshtein (0-100)
+levenshtein_similarity() {
+    local str1="$1"
+    local str2="$2"
+
+    local len1=${#str1}
+    local len2=${#str2}
+    local max_len=$((len1 > len2 ? len1 : len2))
+
+    # Si les deux sont vides
+    if [ $max_len -eq 0 ]; then
+        echo "100"
+        return
+    fi
+
+    local distance=$(levenshtein_distance "$str1" "$str2")
+
+    # Similarité = (1 - distance/max_len) * 100
+    awk -v dist="$distance" -v max="$max_len" 'BEGIN {
+        similarity = (1 - dist / max) * 100
+        printf "%.0f\n", similarity
+    }'
+}
+
 calculate_similarity() {
     local str1="$1"
     local str2="$2"
@@ -444,7 +519,7 @@ search_mods_via_api() {
         local api_response=$(api_request "/mods/search?gameId=$HYTALE_GAME_ID&searchFilter=$(echo "$author" | sed 's/ /%20/g')&pageSize=50")
         echo "$api_response" | jq -r '.data[]? | select(.links.websiteUrl | contains("/mods/")) | "\(.name)@@@\(.slug)@@@\(.id)@@@\(.links.websiteUrl)@@@\(.authors[0].name // "")"' 2>/dev/null > "$cf_mods_file"
 
-        # Matcher les mods locaux de cet auteur (utiliser awk car IFS ne gère pas les séparateurs multi-caractères)
+        # Pass 1: Matcher les mods locaux avec stratégies strictes (exact, slug, substring)
         while IFS= read -r map_line; do
             [ -z "$map_line" ] && continue
 
@@ -457,8 +532,9 @@ search_mods_via_api() {
             [[ "$mod_author" != *"$author"* ]] && continue
 
             local normalized_local=$(normalize_for_match "$mod_name")
+            local found_match=false
 
-            # Chercher dans les résultats de cet auteur
+            # Chercher dans les résultats de cet auteur (stratégies strictes uniquement)
             while IFS= read -r line; do
                 local cf_name=$(echo "$line" | awk -F'@@@' '{print $1}')
                 local cf_slug=$(echo "$line" | awk -F'@@@' '{print $2}')
@@ -466,34 +542,95 @@ search_mods_via_api() {
                 local cf_url=$(echo "$line" | awk -F'@@@' '{print $4}')
                 local cf_author=$(echo "$line" | awk -F'@@@' '{print $5}')
 
-                # Vérifier que l'auteur correspond
                 [[ "$cf_author" != *"$author"* ]] && continue
 
                 local normalized_cf=$(normalize_for_match "$cf_name")
+                local match_type=""
 
-                # Match exact ou par sous-chaîne (avec taille minimale)
-                if [[ "$normalized_cf" == "$normalized_local" ]] || \
-                   [[ "$cf_slug" == "$local_slug" ]] || \
-                   { [ ${#normalized_cf} -ge 5 ] && [[ "$normalized_cf" == *"$normalized_local"* ]]; } || \
-                   { [ ${#normalized_local} -ge 5 ] && [[ "$normalized_local" == *"$normalized_cf"* ]]; }; then
+                # Stratégie 1: Match exact du nom normalisé
+                if [[ "$normalized_cf" == "$normalized_local" ]]; then
+                    match_type="exact"
+                # Stratégie 2: Match exact du slug
+                elif [[ "$cf_slug" == "$local_slug" ]]; then
+                    match_type="slug"
+                # Stratégie 3: Sous-chaîne (avec taille minimale)
+                elif { [ ${#normalized_cf} -ge 5 ] && [[ "$normalized_cf" == *"$normalized_local"* ]]; } || \
+                     { [ ${#normalized_local} -ge 5 ] && [[ "$normalized_local" == *"$normalized_cf"* ]]; }; then
+                    match_type="substring"
+                fi
 
-                    log_success "  ✓ $mod_name → $cf_url"
+                if [ -n "$match_type" ]; then
+                    log_success "  ✓ $mod_name → $cf_url ($match_type)"
 
-                    # Sauvegarder
                     local temp_json=$(mktemp)
                     jq --arg url "$cf_url" '. + {curseforge_url: $url, found_via: "api_author"}' "$json_file" > "$temp_json"
                     mv "$temp_json" "$json_file"
 
                     save_to_cache "$mod_name" "{\"curseforge_url\": \"$cf_url\", \"curseforge_id\": $cf_id, \"slug\": \"$cf_slug\", \"found_via\": \"author_search\"}"
-
-                    # Retirer de la liste à chercher
                     sed -i "/^${mod_name}@@@/d" "$mods_map_file" 2>/dev/null
 
                     ((total_found++))
                     ((remaining--))
+                    found_match=true
                     break
                 fi
             done < "$cf_mods_file"
+        done < "$mods_map_file"
+
+        # Pass 2: Fuzzy matching (Levenshtein) pour les mods non trouvés de cet auteur
+        while IFS= read -r map_line; do
+            [ -z "$map_line" ] && continue
+
+            local mod_name=$(echo "$map_line" | awk -F'@@@' '{print $1}')
+            local json_file=$(echo "$map_line" | awk -F'@@@' '{print $2}')
+            local local_slug=$(echo "$map_line" | awk -F'@@@' '{print $3}')
+            local mod_author=$(echo "$map_line" | awk -F'@@@' '{print $4}')
+
+            [ -z "$mod_name" ] && continue
+            [[ "$mod_author" != *"$author"* ]] && continue
+
+            local normalized_local=$(normalize_for_match "$mod_name")
+            local best_similarity=0
+            local best_match=""
+
+            # Chercher le meilleur match Levenshtein
+            while IFS= read -r line; do
+                local cf_name=$(echo "$line" | awk -F'@@@' '{print $1}')
+                local cf_slug=$(echo "$line" | awk -F'@@@' '{print $2}')
+                local cf_author=$(echo "$line" | awk -F'@@@' '{print $5}')
+
+                [[ "$cf_author" != *"$author"* ]] && continue
+
+                local normalized_cf=$(normalize_for_match "$cf_name")
+
+                if [ ${#normalized_cf} -ge 5 ] && [ ${#normalized_local} -ge 5 ]; then
+                    local similarity=$(levenshtein_similarity "$normalized_local" "$normalized_cf")
+                    if [ "$similarity" -gt "$best_similarity" ]; then
+                        best_similarity=$similarity
+                        best_match="$line"
+                    fi
+                fi
+            done < "$cf_mods_file"
+
+            # Si on a trouvé un bon match (>= 60%)
+            if [ "$best_similarity" -ge 60 ] && [ -n "$best_match" ]; then
+                local cf_name=$(echo "$best_match" | awk -F'@@@' '{print $1}')
+                local cf_slug=$(echo "$best_match" | awk -F'@@@' '{print $2}')
+                local cf_id=$(echo "$best_match" | awk -F'@@@' '{print $3}')
+                local cf_url=$(echo "$best_match" | awk -F'@@@' '{print $4}')
+
+                log_success "  ✓ $mod_name → $cf_url (fuzzy:${best_similarity}%)"
+
+                local temp_json=$(mktemp)
+                jq --arg url "$cf_url" '. + {curseforge_url: $url, found_via: "api_author_fuzzy"}' "$json_file" > "$temp_json"
+                mv "$temp_json" "$json_file"
+
+                save_to_cache "$mod_name" "{\"curseforge_url\": \"$cf_url\", \"curseforge_id\": $cf_id, \"slug\": \"$cf_slug\", \"found_via\": \"author_search_fuzzy\"}"
+                sed -i "/^${mod_name}@@@/d" "$mods_map_file" 2>/dev/null
+
+                ((total_found++))
+                ((remaining--))
+            fi
         done < "$mods_map_file"
 
         rm -f "$cf_mods_file"
