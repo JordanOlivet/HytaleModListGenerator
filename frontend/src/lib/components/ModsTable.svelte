@@ -1,6 +1,21 @@
 <script lang="ts">
 	import { filteredMods, searchQuery, sortColumn, sortDirection, isLoading, error } from '$lib/stores/mods';
+	import { isAdmin } from '$lib/stores/auth';
 	import type { Mod } from '$lib/types';
+	import UpdateModModal from './UpdateModModal.svelte';
+
+	let showUpdateModal = $state(false);
+	let selectedModForUpdate = $state<Mod | null>(null);
+
+	function openUpdateModal(mod: Mod) {
+		selectedModForUpdate = mod;
+		showUpdateModal = true;
+	}
+
+	function closeUpdateModal() {
+		showUpdateModal = false;
+		selectedModForUpdate = null;
+	}
 
 	function toggleSort(column: 'name' | 'version' | 'authors') {
 		if ($sortColumn === column) {
@@ -129,7 +144,15 @@
 						<td class="secondary">
 							{mod.version}
 							{#if hasUpdate(mod)}
-								<span class="badge badge-update" title="New version: {mod.latestCurseForgeVersion}">UPDATE</span>
+								{#if $isAdmin}
+									<button class="badge badge-update badge-clickable"
+											title="Click to update to {mod.latestCurseForgeVersion}"
+											onclick={() => openUpdateModal(mod)}>
+										UPDATE
+									</button>
+								{:else}
+									<span class="badge badge-update" title="New version: {mod.latestCurseForgeVersion}">UPDATE</span>
+								{/if}
 							{/if}
 						</td>
 						<td class="secondary">{mod.authors.join(', ') || 'Unknown'}</td>
@@ -145,6 +168,10 @@
 		</table>
 	{/if}
 </div>
+
+{#if showUpdateModal && selectedModForUpdate}
+	<UpdateModModal mod={selectedModForUpdate} onClose={closeUpdateModal} />
+{/if}
 
 <style>
 	.table-container {
@@ -301,6 +328,22 @@
 		cursor: help;
 		margin-left: 8px;
 		vertical-align: middle;
+	}
+
+	/* Clickable badge for admin users */
+	button.badge-clickable {
+		cursor: pointer;
+		border: none;
+		transition: all 0.2s ease;
+	}
+
+	button.badge-clickable:hover {
+		background: #15803d;
+		transform: scale(1.05);
+	}
+
+	button.badge-clickable:active {
+		transform: scale(0.98);
 	}
 
 	.loading, .error, .empty {

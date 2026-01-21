@@ -1,4 +1,4 @@
-import type { ModListResponse, StatusResponse, LoginResponse, VerifyResponse } from '$lib/types';
+import type { ModListResponse, StatusResponse, LoginResponse, VerifyResponse, UpdateModResponse } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -50,6 +50,15 @@ export async function verifyToken(token: string): Promise<VerifyResponse> {
 
 export async function logout(token: string): Promise<void> {
 	await fetchApi('/auth/logout', {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`
+		}
+	});
+}
+
+export async function updateMod(fileName: string, token: string): Promise<UpdateModResponse> {
+	return fetchApi<UpdateModResponse>(`/mods/${encodeURIComponent(fileName)}/update`, {
 		method: 'POST',
 		headers: {
 			Authorization: `Bearer ${token}`

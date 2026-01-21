@@ -38,3 +38,10 @@ export interface LoginResponse {
 export interface VerifyResponse {
 	valid: boolean;
 }
+
+export interface UpdateModResponse {
+	success: boolean;
+	message: string;
+	newFileName?: string;
+	oldFileName?: string;
+}

@@ -99,6 +99,19 @@ public class CacheService : ICacheService
         }
     }
 
+    public void InvalidateMod(string modName)
+    {
+        lock (_lock)
+        {
+            var cache = LoadCache();
+            if (cache.Mods.Remove(modName))
+            {
+                SaveCache(cache);
+                _logger.LogInformation("Cache invalidated for mod: {ModName}", modName);
+            }
+        }
+    }
+
     public bool IsCacheValid(CachedMod cached)
     {
         return cached.CachedAt > DateTime.UtcNow.AddDays(-CacheValidityDays);

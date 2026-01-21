@@ -8,6 +8,7 @@ public interface ICacheService
     void SaveCache(ModCache cache);
     CachedMod? GetCachedMod(string modName);
     void CacheMod(string modName, string? url, string? latestVersion = null, bool notFound = false);
+    void InvalidateMod(string modName);
     bool IsCacheValid(CachedMod cached);
     DateTime? GetLastUpdated();
 }

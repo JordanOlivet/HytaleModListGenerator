@@ -119,4 +119,62 @@ public class CurseForgeService : ICurseForgeService
 
         return null;
     }
+
+    public async Task<CfModData?> GetModBySlugAsync(string slug)
+    {
+        try
+        {
+            // Search for the mod by slug
+            var url = $"{ApiBaseUrl}/mods/search?gameId={GameId}&slug={Uri.EscapeDataString(slug)}&pageSize=1";
+            var response = await _httpClient.GetFromJsonAsync<CfResponse>(url, JsonOpts);
+
+            if (response?.Data == null || response.Data.Count == 0)
+            {
+                _logger.LogWarning("No mod found with slug: {Slug}", slug);
+                return null;
+            }
+
+            return response.Data[0];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting mod by slug: {Slug}", slug);
+            return null;
+        }
+    }
+
+    public async Task<string?> GetFileDownloadUrlAsync(int modId, int fileId)
+    {
+        try
+        {
+            var url = $"{ApiBaseUrl}/mods/{modId}/files/{fileId}/download-url";
+            var response = await _httpClient.GetFromJsonAsync<CfDownloadUrlResponse>(url, JsonOpts);
+            return response?.Data;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            _logger.LogWarning("Download forbidden for mod {ModId} file {FileId} - distribution disabled", modId, fileId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting download URL for mod {ModId} file {FileId}", modId, fileId);
+            return null;
+        }
+    }
+
+    public async Task<Stream?> DownloadFileAsync(string downloadUrl)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadAsStreamAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error downloading file from {Url}", downloadUrl);
+            return null;
+        }
+    }
 }
