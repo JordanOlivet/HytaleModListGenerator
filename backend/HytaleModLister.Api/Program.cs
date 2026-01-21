@@ -46,6 +46,8 @@ try
     builder.Services.AddSingleton<IModRefreshService, ModRefreshService>();
     builder.Services.AddSingleton<RefreshSchedulerService>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<RefreshSchedulerService>());
+    builder.Services.AddSingleton<ISessionService, SessionService>();
+    builder.Services.AddScoped<IModUpdateService, ModUpdateService>();
 
     WebApplication app = builder.Build();
 

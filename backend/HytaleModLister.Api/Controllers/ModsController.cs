@@ -9,11 +9,19 @@ namespace HytaleModLister.Api.Controllers;
 public class ModsController : ControllerBase
 {
     private readonly IModRefreshService _refreshService;
+    private readonly IModUpdateService _updateService;
+    private readonly ISessionService _sessionService;
     private readonly ILogger<ModsController> _logger;
 
-    public ModsController(IModRefreshService refreshService, ILogger<ModsController> logger)
+    public ModsController(
+        IModRefreshService refreshService,
+        IModUpdateService updateService,
+        ISessionService sessionService,
+        ILogger<ModsController> logger)
     {
         _refreshService = refreshService;
+        _updateService = updateService;
+        _sessionService = sessionService;
         _logger = logger;
     }
 
@@ -38,6 +46,7 @@ public class ModsController : ControllerBase
                 Authors = m.Authors,
                 Website = string.IsNullOrEmpty(m.Website) ? null : m.Website,
                 CurseForgeUrl = m.CurseForgeUrl,
+                LatestCurseForgeVersion = m.LatestCurseForgeVersion,
                 FoundVia = m.FoundVia
             }).ToList()
         };
@@ -72,6 +81,44 @@ public class ModsController : ControllerBase
 
         _logger.LogInformation("Manual refresh triggered (force={Force})", force);
         return Accepted(new { message = "Refresh started" });
+    }
+
+    /// <summary>
+    /// Update a mod to its latest CurseForge version
+    /// </summary>
+    /// <param name="fileName">The current filename of the mod to update</param>
+    /// <param name="authorization">Bearer token for admin authentication</param>
+    /// <param name="skipRefresh">If true, skips the mods list refresh after update (for bulk updates)</param>
+    [HttpPost("{fileName}/update")]
+    public async Task<ActionResult<UpdateModResponse>> UpdateMod(
+        string fileName,
+        [FromHeader(Name = "Authorization")] string? authorization,
+        [FromQuery] bool skipRefresh = false)
+    {
+        // 1. Validate the admin session
+        var token = ExtractBearerToken(authorization);
+        if (string.IsNullOrEmpty(token) || !_sessionService.ValidateSession(token))
+        {
+            _logger.LogWarning("Unauthorized update attempt for mod: {FileName}", fileName);
+            return Unauthorized(new UpdateModResponse(false, "Unauthorized"));
+        }
+
+        // 2. Call the update service
+        _logger.LogInformation("Admin requested update for mod: {FileName}", fileName);
+        var result = await _updateService.UpdateModAsync(fileName, skipRefresh);
+
+        return result.Success ? Ok(result) : BadRequest(result);
+    }
+
+    private static string? ExtractBearerToken(string? authorization)
+    {
+        if (string.IsNullOrEmpty(authorization))
+            return null;
+
+        if (authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            return authorization[7..];
+
+        return authorization;
     }
 }
 

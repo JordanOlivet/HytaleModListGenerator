@@ -6,6 +6,7 @@ export interface Mod {
 	authors: string[];
 	website?: string;
 	curseForgeUrl?: string;
+	latestCurseForgeVersion?: string;
 	foundVia?: string;
 }
 
@@ -27,4 +28,20 @@ export interface StatusResponse {
 	isRefreshing: boolean;
 	progress?: RefreshProgress;
 	nextScheduledRefresh?: string;
+}
+
+export interface LoginResponse {
+	token: string;
+	expiresAt: string;
+}
+
+export interface VerifyResponse {
+	valid: boolean;
+}
+
+export interface UpdateModResponse {
+	success: boolean;
+	message: string;
+	newFileName?: string;
+	oldFileName?: string;
 }

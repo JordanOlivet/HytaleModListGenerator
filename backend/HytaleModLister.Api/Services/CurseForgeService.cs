@@ -70,7 +70,111 @@ public class CurseForgeService : ICurseForgeService
                 Name = m.Name ?? "",
                 Slug = m.Slug ?? "",
                 Url = m.Links!.WebsiteUrl!,
-                Authors = m.Authors?.Select(a => a.Name ?? "").ToList() ?? []
+                Authors = m.Authors?.Select(a => a.Name ?? "").ToList() ?? [],
+                LatestVersion = ExtractLatestVersion(m.LatestFiles)
             }).ToList();
+    }
+
+    private string? ExtractLatestVersion(List<CfFile>? files)
+    {
+        if (files == null || files.Count == 0) return null;
+
+        // Get the most recent file by date, fallback to first file
+        var latestFile = files
+            .OrderByDescending(f => f.FileDate ?? DateTime.MinValue)
+            .FirstOrDefault();
+
+        if (latestFile == null) return null;
+
+        // Try to extract version from DisplayName (e.g., "ModName v1.2.3" or "ModName 1.2.3")
+        var displayName = latestFile.DisplayName;
+        if (!string.IsNullOrEmpty(displayName))
+        {
+            // Common patterns: "v1.2.3", "1.2.3", "version 1.2.3"
+            var versionMatch = System.Text.RegularExpressions.Regex.Match(
+                displayName,
+                @"v?(\d+(?:\.\d+)+(?:[-+][\w.]+)?)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            if (versionMatch.Success)
+            {
+                return versionMatch.Groups[1].Value;
+            }
+        }
+
+        // Fallback: try to extract from FileName
+        var fileName = latestFile.FileName;
+        if (!string.IsNullOrEmpty(fileName))
+        {
+            var versionMatch = System.Text.RegularExpressions.Regex.Match(
+                fileName,
+                @"v?(\d+(?:\.\d+)+(?:[-+][\w.]+)?)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            if (versionMatch.Success)
+            {
+                return versionMatch.Groups[1].Value;
+            }
+        }
+
+        return null;
+    }
+
+    public async Task<CfModData?> GetModBySlugAsync(string slug)
+    {
+        try
+        {
+            // Search for the mod by slug
+            var url = $"{ApiBaseUrl}/mods/search?gameId={GameId}&slug={Uri.EscapeDataString(slug)}&pageSize=1";
+            var response = await _httpClient.GetFromJsonAsync<CfResponse>(url, JsonOpts);
+
+            if (response?.Data == null || response.Data.Count == 0)
+            {
+                _logger.LogWarning("No mod found with slug: {Slug}", slug);
+                return null;
+            }
+
+            return response.Data[0];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting mod by slug: {Slug}", slug);
+            return null;
+        }
+    }
+
+    public async Task<string?> GetFileDownloadUrlAsync(int modId, int fileId)
+    {
+        try
+        {
+            var url = $"{ApiBaseUrl}/mods/{modId}/files/{fileId}/download-url";
+            var response = await _httpClient.GetFromJsonAsync<CfDownloadUrlResponse>(url, JsonOpts);
+            return response?.Data;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            _logger.LogWarning("Download forbidden for mod {ModId} file {FileId} - distribution disabled", modId, fileId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting download URL for mod {ModId} file {FileId}", modId, fileId);
+            return null;
+        }
+    }
+
+    public async Task<Stream?> DownloadFileAsync(string downloadUrl)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadAsStreamAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error downloading file from {Url}", downloadUrl);
+            return null;
+        }
     }
 }

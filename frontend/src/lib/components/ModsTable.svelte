@@ -1,6 +1,23 @@
 <script lang="ts">
-	import { filteredMods, searchQuery, sortColumn, sortDirection, isLoading, error } from '$lib/stores/mods';
+	import { filteredMods, searchQuery, sortColumn, sortDirection, isLoading, error, modsWithUpdates } from '$lib/stores/mods';
+	import { isAdmin } from '$lib/stores/auth';
 	import type { Mod } from '$lib/types';
+	import UpdateModModal from './UpdateModModal.svelte';
+	import BulkUpdateModal from './BulkUpdateModal.svelte';
+
+	let showUpdateModal = $state(false);
+	let selectedModForUpdate = $state<Mod | null>(null);
+	let showBulkUpdateModal = $state(false);
+
+	function openUpdateModal(mod: Mod) {
+		selectedModForUpdate = mod;
+		showUpdateModal = true;
+	}
+
+	function closeUpdateModal() {
+		showUpdateModal = false;
+		selectedModForUpdate = null;
+	}
 
 	function toggleSort(column: 'name' | 'version' | 'authors') {
 		if ($sortColumn === column) {
@@ -47,6 +64,14 @@
 		if ($sortColumn !== column) return '';
 		return $sortDirection === 'asc' ? ' ↑' : ' ↓';
 	}
+
+	function hasUpdate(mod: Mod): boolean {
+		if (!mod.latestCurseForgeVersion || !mod.version) return false;
+		// Normalize versions for comparison (remove leading 'v' if present)
+		const local = mod.version.replace(/^v/i, '').trim();
+		const remote = mod.latestCurseForgeVersion.replace(/^v/i, '').trim();
+		return local !== remote;
+	}
 </script>
 
 <div class="table-container">
@@ -60,6 +85,11 @@
 			placeholder="Search mods..."
 			bind:value={$searchQuery}
 		/>
+		{#if $isAdmin && $modsWithUpdates.length > 0}
+			<button class="bulk-update-btn" onclick={() => showBulkUpdateModal = true}>
+				Tout mettre à jour ({$modsWithUpdates.length})
+			</button>
+		{/if}
 	</div>
 
 	{#if $isLoading}
@@ -118,7 +148,20 @@
 								<span class="no-url">-</span>
 							{/if}
 						</td>
-						<td class="secondary">{mod.version}</td>
+						<td class="secondary">
+							{mod.version}
+							{#if hasUpdate(mod)}
+								{#if $isAdmin}
+									<button class="badge badge-update badge-clickable"
+											title="Click to update to {mod.latestCurseForgeVersion}"
+											onclick={() => openUpdateModal(mod)}>
+										UPDATE
+									</button>
+								{:else}
+									<span class="badge badge-update" title="New version: {mod.latestCurseForgeVersion}">UPDATE</span>
+								{/if}
+							{/if}
+						</td>
 						<td class="secondary">{mod.authors.join(', ') || 'Unknown'}</td>
 						<td class="secondary description">{truncate(mod.description, 100)}</td>
 						<td>
@@ -132,6 +175,14 @@
 		</table>
 	{/if}
 </div>
+
+{#if showUpdateModal && selectedModForUpdate}
+	<UpdateModModal mod={selectedModForUpdate} onClose={closeUpdateModal} />
+{/if}
+
+{#if showBulkUpdateModal}
+	<BulkUpdateModal modsToUpdate={$modsWithUpdates} onClose={() => showBulkUpdateModal = false} />
+{/if}
 
 <style>
 	.table-container {
@@ -164,6 +215,23 @@
 
 	.search-bar input::placeholder {
 		color: var(--text-secondary);
+	}
+
+	.bulk-update-btn {
+		padding: 8px 16px;
+		background: #16a34a;
+		color: white;
+		border: none;
+		border-radius: 6px;
+		font-size: 14px;
+		font-weight: 500;
+		cursor: pointer;
+		margin-left: auto;
+		white-space: nowrap;
+	}
+
+	.bulk-update-btn:hover {
+		background: #15803d;
 	}
 
 	table {
@@ -280,6 +348,30 @@
 	/* Unknown: red - not found */
 	.badge-unknown {
 		background: #dc2626;
+	}
+
+	/* Update available: green */
+	.badge-update {
+		background: #16a34a;
+		cursor: help;
+		margin-left: 8px;
+		vertical-align: middle;
+	}
+
+	/* Clickable badge for admin users */
+	button.badge-clickable {
+		cursor: pointer;
+		border: none;
+		transition: all 0.2s ease;
+	}
+
+	button.badge-clickable:hover {
+		background: #15803d;
+		transform: scale(1.05);
+	}
+
+	button.badge-clickable:active {
+		transform: scale(0.98);
 	}
 
 	.loading, .error, .empty {

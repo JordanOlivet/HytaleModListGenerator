@@ -6,7 +6,7 @@ services:
     ports:
       - "5000:8080"
     volumes:
-      - ./mods:/app/mods:ro
+      - ./mods:/app/mods
       - backend-data:/app/data
     environment:
       - CurseForge__ApiKey=${CURSEFORGE_API_KEY:-}

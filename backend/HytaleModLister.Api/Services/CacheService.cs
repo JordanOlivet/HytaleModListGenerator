@@ -83,7 +83,7 @@ public class CacheService : ICacheService
         return cache.Mods.GetValueOrDefault(modName);
     }
 
-    public void CacheMod(string modName, string? url, bool notFound = false)
+    public void CacheMod(string modName, string? url, string? latestVersion = null, bool notFound = false)
     {
         lock (_lock)
         {
@@ -91,10 +91,24 @@ public class CacheService : ICacheService
             cache.Mods[modName] = new CachedMod
             {
                 CurseForgeUrl = url,
+                LatestVersion = latestVersion,
                 NotFound = notFound,
                 CachedAt = DateTime.UtcNow
             };
             SaveCache(cache);
+        }
+    }
+
+    public void InvalidateMod(string modName)
+    {
+        lock (_lock)
+        {
+            var cache = LoadCache();
+            if (cache.Mods.Remove(modName))
+            {
+                SaveCache(cache);
+                _logger.LogInformation("Cache invalidated for mod: {ModName}", modName);
+            }
         }
     }
 
