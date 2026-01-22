@@ -4,11 +4,14 @@
 	import type { Mod } from '$lib/types';
 	import UpdateModModal from './UpdateModModal.svelte';
 	import BulkUpdateModal from './BulkUpdateModal.svelte';
+	import UrlOverrideModal from './UrlOverrideModal.svelte';
 	import { hasNewerVersion } from '$lib/utils/versionCompare';
 
 	let showUpdateModal = $state(false);
 	let selectedModForUpdate = $state<Mod | null>(null);
 	let showBulkUpdateModal = $state(false);
+	let showOverrideModal = $state(false);
+	let selectedModForOverride = $state<Mod | null>(null);
 
 	function openUpdateModal(mod: Mod) {
 		selectedModForUpdate = mod;
@@ -18,6 +21,16 @@
 	function closeUpdateModal() {
 		showUpdateModal = false;
 		selectedModForUpdate = null;
+	}
+
+	function openOverrideModal(mod: Mod) {
+		selectedModForOverride = mod;
+		showOverrideModal = true;
+	}
+
+	function closeOverrideModal() {
+		showOverrideModal = false;
+		selectedModForOverride = null;
 	}
 
 	function toggleSort(column: 'name' | 'version' | 'authors') {
@@ -39,9 +52,10 @@
 		return { url: '', label: '-', type: 'none' };
 	}
 
-	type BadgeType = 'manifest' | 'cache' | 'cf-name' | 'cf-id' | 'cf-partial' | 'cf-fuzzy' | 'website' | 'unknown';
+	type BadgeType = 'manifest' | 'cache' | 'cf-name' | 'cf-id' | 'cf-partial' | 'cf-fuzzy' | 'website' | 'unknown' | 'override';
 
 	function getBadgeLabel(mod: Mod): { label: string; type: BadgeType } {
+		if (mod.foundVia === 'override') return { label: 'override', type: 'override' };
 		if (!mod.curseForgeUrl && mod.website) return { label: 'website', type: 'website' };
 		if (mod.foundVia === 'manifest') return { label: 'manifest', type: 'manifest' };
 		if (mod.foundVia === 'cache') return { label: 'cache', type: 'cache' };
@@ -162,9 +176,24 @@
 						<td class="secondary">{mod.authors.join(', ') || 'Unknown'}</td>
 						<td class="secondary description">{truncate(mod.description, 100)}</td>
 						<td>
-							{#if badge.label}
-								<span class="badge badge-{badge.type}">{badge.label}</span>
-							{/if}
+							<span class="source-cell">
+								{#if badge.label}
+									<span class="badge badge-{badge.type}">{badge.label}</span>
+								{/if}
+								{#if $isAdmin}
+									<button
+										class="edit-override-btn"
+										class:active={mod.foundVia === 'override'}
+										title="Edit URL override"
+										onclick={() => openOverrideModal(mod)}
+									>
+										<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+											<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+											<path d="m15 5 4 4"/>
+										</svg>
+									</button>
+								{/if}
+							</span>
 						</td>
 					</tr>
 				{/each}
@@ -179,6 +208,10 @@
 
 {#if showBulkUpdateModal}
 	<BulkUpdateModal modsToUpdate={$modsWithUpdates} onClose={() => showBulkUpdateModal = false} />
+{/if}
+
+{#if showOverrideModal && selectedModForOverride}
+	<UrlOverrideModal mod={selectedModForOverride} onClose={closeOverrideModal} />
 {/if}
 
 <style>
@@ -369,6 +402,11 @@
 		background: #dc2626;
 	}
 
+	/* Override: orange - manually set */
+	.badge-override {
+		background: #f59e0b;
+	}
+
 	/* Update available: green */
 	.badge-update {
 		background: #16a34a;
@@ -391,6 +429,43 @@
 
 	button.badge-clickable:active {
 		transform: scale(0.98);
+	}
+
+	.source-cell {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.edit-override-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		padding: 0;
+		border: none;
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-secondary);
+		cursor: pointer;
+		transition: all 0.2s ease;
+		opacity: 0.5;
+	}
+
+	.edit-override-btn:hover {
+		background: var(--bg-secondary);
+		color: var(--text-primary);
+		opacity: 1;
+	}
+
+	.edit-override-btn.active {
+		color: #f59e0b;
+		opacity: 1;
+	}
+
+	.edit-override-btn.active:hover {
+		color: #d97706;
 	}
 
 	.loading, .error, .empty {
