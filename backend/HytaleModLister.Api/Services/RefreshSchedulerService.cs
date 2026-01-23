@@ -25,6 +25,10 @@ public class RefreshSchedulerService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Yield immediately to allow the application (and health check endpoint) to start
+        // before running the initial scan
+        await Task.Yield();
+
         // Parse CRON expression
         var cronString = _configuration["Scheduler:RefreshCron"] ?? "0 0 * * *";
         try
