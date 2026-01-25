@@ -166,7 +166,3 @@ When merging a PR with a `release:*` label, the workflow:
 ├── docker-compose.yml           # Docker Compose configuration
 └── VERSION                      # Current version
 ```
-
-## License
-
-MIT
